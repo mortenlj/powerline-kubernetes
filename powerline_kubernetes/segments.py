@@ -4,17 +4,18 @@ import yaml
 from powerline.theme import requires_segment_info
 from powerline.segments import Segment, with_docstring
 from kubernetes.config import kube_config
+import kubernetes.client as kubernetes_client
+from kubernetes.client.rest import ApiException
+import time
 
 _KUBERNETES = u'\U00002388 '
 
+
 @requires_segment_info
 class KubernetesSegment(Segment):
+
     def kube_logo(self, color):
-        return {
-            'contents': _KUBERNETES,
-            'highlight_groups': [color],
-            'divider_highlight_group': 'kubernetes:divider'
-        }
+        return {'contents': _KUBERNETES, 'highlight_groups': [color], 'divider_highlight_group': 'kubernetes:divider'}
 
     def build_segments(self, context, namespace):
         alert = (context in self.alerts or namespace in self.alerts or context + ':' + namespace in self.alerts)
@@ -54,17 +55,19 @@ class KubernetesSegment(Segment):
         self.show_default_namespace = None
         self.alerts = []
 
-    def __call__(
-            self,
-            pl,
-            segment_info,
-            show_kube_logo=True,
-            show_cluster=True,
-            show_namespace=True,
-            show_default_namespace=False,
-            alerts=[],
-            **kwargs
-        ):
+        self.api_server_check_interval = 15
+        self.last_api_server_check = 0
+        self.api_server_alive = False
+
+    def __call__(self,
+                 pl,
+                 segment_info,
+                 show_kube_logo=True,
+                 show_cluster=True,
+                 show_namespace=True,
+                 show_default_namespace=False,
+                 alerts=[],
+                 **kwargs):
         pl.debug('Running powerline-kubernetes')
 
         kube_config_location = segment_info['environ'].get('KUBECONFIG', '~/.kube/config')
@@ -77,23 +80,46 @@ class KubernetesSegment(Segment):
         self.alerts = alerts
 
         try:
-            k8_loader = kube_config.KubeConfigLoader(config_dict=kube_config.KubeConfigMerger(kube_config_location).config)
-            current_context = k8_loader.current_context
+            k8s_merger = kube_config.KubeConfigMerger(kube_config_location)
+            k8s_loader = kube_config.KubeConfigLoader(config_dict=k8s_merger.config)
+
+            current_context = k8s_loader.current_context
             ctx = current_context['context']
             context = current_context['name']
+            try:
+                namespace = ctx['namespace']
+            except KeyError:
+                namespace = 'default'
+
+            current_time = time.monotonic()
+            if current_time - self.last_api_server_check > self.api_server_check_interval:
+                self.last_api_server_check = current_time
+
+                k8s_merger.save_changes()
+                client_config = kubernetes_client.Configuration()
+                k8s_loader.load_and_set(client_config)
+
+                version_api = kubernetes_client.VersionApi(kubernetes_client.ApiClient(configuration=client_config))
+                try:
+                    pl.debug(version_api.get_code())
+                except Exception as e:
+                    pl.error(e)
+                    self.api_server_alive = False
+                    return
+                else:
+                    self.api_server_alive = True
+            elif not self.api_server_alive:
+                pl.debug('Assuming kube-apiserver is still dead.')
+                return
         except Exception as e:
             pl.error(e)
             return
-        try:
-            namespace = ctx['namespace']
-        except KeyError:
-            namespace = 'default'
-
 
         return self.build_segments(context, namespace)
 
-kubernetes = with_docstring(KubernetesSegment(),
-'''Return the current context.
+
+kubernetes = with_docstring(
+    KubernetesSegment(), '''Return the current context.
 
 It will show the current context in config.
 It requires kubectl and kubernetes-py to be installed.

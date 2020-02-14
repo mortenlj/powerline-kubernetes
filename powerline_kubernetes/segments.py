@@ -9,8 +9,6 @@ _KUBERNETES = u'\U00002388 '
 
 @requires_segment_info
 class KubernetesSegment(Segment):
-    conf_yaml = os.path.expanduser(kube_config.KUBE_CONFIG_DEFAULT_LOCATION)
-
     def kube_logo(self, color):
         return {
             'contents': _KUBERNETES,
@@ -48,11 +46,6 @@ class KubernetesSegment(Segment):
 
         return segments
 
-    @property
-    def config(self):
-        with open(self.conf_yaml, 'r') as f:
-            return yaml.load(f, Loader=yaml.FullLoader)
-
     def __init__(self):
         self.pl = None
         self.show_kube_logo = None
@@ -64,6 +57,7 @@ class KubernetesSegment(Segment):
     def __call__(
             self,
             pl,
+            segment_info,
             show_kube_logo=True,
             show_cluster=True,
             show_namespace=True,
@@ -72,6 +66,9 @@ class KubernetesSegment(Segment):
             **kwargs
         ):
         pl.debug('Running powerline-kubernetes')
+
+        kube_config_location = segment_info['environ'].get('KUBECONFIG', '~/.kube/config')
+
         self.pl = pl
         self.show_kube_logo = show_kube_logo
         self.show_cluster = show_cluster
@@ -80,7 +77,7 @@ class KubernetesSegment(Segment):
         self.alerts = alerts
 
         try:
-            k8_loader = kube_config.KubeConfigLoader(self.config)
+            k8_loader = kube_config.KubeConfigLoader(config_dict=kube_config.KubeConfigMerger(kube_config_location).config)
             current_context = k8_loader.current_context
             ctx = current_context['context']
             context = current_context['name']

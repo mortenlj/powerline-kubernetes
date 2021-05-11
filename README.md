@@ -46,6 +46,8 @@ Then you can activate the Kubernetes segment by adding it to your segment config
         "show_cluster": true, // show cluster name
         "show_namespace": true, // show namespace name
         "show_default_namespace": false, // do not show namespace name if it's "default"
+        "api_server_check": false, // attempt to check the api-server is available (may hang forever)
+        "api_server_check_interval": 15 // how often should the api-server be checked (in seconds)    
         "alerts": [
           "live", // show line in different color when namespace matches
           "cluster:live"  // show line in different color when cluster name and namespace match
@@ -66,6 +68,8 @@ Licensed under the [MIT License](LICENSE).
 
 Created by [so0k](https://github.com/so0k/). Code contributions by:
 - [bokysan](https://github.com/bokysan)
+- [elemental-if](https://github.com/elemental-if)
+- [mortenlj](https://github.com/mortenlj)
 
 
 ---

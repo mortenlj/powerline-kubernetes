@@ -55,6 +55,7 @@ class KubernetesSegment(Segment):
         self.show_default_namespace = None
         self.alerts = []
 
+        self.api_server_check = False
         self.api_server_check_interval = 15
         self.last_api_server_check = 0
         self.api_server_alive = False
@@ -66,6 +67,8 @@ class KubernetesSegment(Segment):
                  show_cluster=True,
                  show_namespace=True,
                  show_default_namespace=False,
+                 api_server_check=False,
+                 api_server_check_interval=15,
                  alerts=[],
                  **kwargs):
         pl.debug('Running powerline-kubernetes')
@@ -77,6 +80,8 @@ class KubernetesSegment(Segment):
         self.show_cluster = show_cluster
         self.show_namespace = show_namespace
         self.show_default_namespace = show_default_namespace
+        self.api_server_check = api_server_check
+        self.api_server_check_interval = api_server_check_interval
         self.alerts = alerts
 
         try:
@@ -91,31 +96,35 @@ class KubernetesSegment(Segment):
             except KeyError:
                 namespace = 'default'
 
-            current_time = time.monotonic()
-            if current_time - self.last_api_server_check > self.api_server_check_interval:
-                self.last_api_server_check = current_time
+            if self.api_server_check:
+                self._check_api_server(k8s_merger, k8s_loader, pl)
 
-                k8s_merger.save_changes()
-                client_config = kubernetes_client.Configuration()
-                k8s_loader.load_and_set(client_config)
-
-                version_api = kubernetes_client.VersionApi(kubernetes_client.ApiClient(configuration=client_config))
-                try:
-                    pl.debug(version_api.get_code())
-                except Exception as e:
-                    pl.error(e)
-                    self.api_server_alive = False
-                    return
-                else:
-                    self.api_server_alive = True
-            elif not self.api_server_alive:
-                pl.debug('Assuming kube-apiserver is still dead.')
-                return
         except Exception as e:
             pl.error(e)
             return
 
         return self.build_segments(context, namespace)
+
+    def _check_api_server(self, k8s_merger, k8s_loader, pl):
+        current_time = time.monotonic()
+        if current_time - self.last_api_server_check > self.api_server_check_interval:
+            self.last_api_server_check = current_time
+
+            k8s_merger.save_changes()
+            client_config = kubernetes_client.Configuration()
+            k8s_loader.load_and_set(client_config)
+
+            version_api = kubernetes_client.VersionApi(kubernetes_client.ApiClient(configuration=client_config))
+            try:
+                pl.debug(version_api.get_code())
+            except Exception as e:
+                pl.error(e)
+                self.api_server_alive = False
+                return
+            else:
+                self.api_server_alive = True
+        elif not self.api_server_alive:
+            pl.debug('Assuming kube-apiserver is still dead.')
 
 
 kubernetes = with_docstring(
